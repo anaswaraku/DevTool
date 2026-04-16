@@ -1,0 +1,7 @@
+duckduckgo-search
+beautifulsoup4
+chromadb
+streamlit
+python-dotenv
+requests
+newspaper3k
