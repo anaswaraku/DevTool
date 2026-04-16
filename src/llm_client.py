@@ -1,22 +1,23 @@
 from groq import Groq
-from src.config import API_KEY, LLM_MODEL, LLM_MAX_TOKENS
+from src.config import GROQ_API_KEY, LLM_MODEL, LLM_MAX_TOKENS
 
 
 class LLMClient:
     def __init__(self):
-        self.client = Groq(api_key=API_KEY)
+        self.client = Groq(api_key=GROQ_API_KEY)
 
     def ask(self, prompt: str, system: str = "") -> str:
-        kwargs = {
-            "model": LLM_MODEL,
-            "max_tokens": LLM_MAX_TOKENS,
-            "messages": [{"role": "user", "content": prompt}],
-        }
+        messages = []
         if system:
-            kwargs["system"] = system
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
 
-        response = self.client.messages.create(**kwargs)
-        return response.content[0].text
+        response = self.client.chat.completions.create(
+            model=LLM_MODEL,
+            max_tokens=LLM_MAX_TOKENS,
+            messages=messages,
+        )
+        return response.choices[0].message.content
 
     def ask_json(self, prompt: str, system: str = "") -> str:
         system_json = (
