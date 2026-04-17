@@ -1,221 +1,60 @@
 # SmartDevTool
 
-## Overview
+Automated API documentation scraper that extracts structured information from API reference sites using multiple strategies (BeautifulSoup, Scrapy, Selenium, Octoparse).
 
-SmartDevTool is an automated API documentation scraper that extracts structured information from API reference sites. It uses multiple extraction strategies (static HTML parsing, multi-page crawling, JavaScript rendering, and manual extraction) to maximize extraction accuracy across heterogeneous documentation sites.
-
-## Capabilities
-
-- **Multi-strategy extraction**: Adapts to static HTML, JavaScript-rendered SPAs, multi-page documentation, and protected sites
-- **Structured data extraction**: Automatically identifies endpoints, authentication methods, sample URLs, use cases, and code snippets
-- **Persistent storage**: JSON-based storage with registry for managing scraped data
-- **Natural language querying**: Answer questions about scraped APIs using LLM-powered analysis
-- **Web interface**: Streamlit-based UI for scraping and querying
-
-## Installation
-
-### Requirements
-
-- Python 3.10+
-- Groq API key (for LLM features)
-
-### Setup
+## Quick Start
 
 ```bash
-# Clone and navigate to project
-git clone <repo>
-cd SmartDevTool
-
-# Create virtual environment
-python -m venv .venv
-.venv\Scripts\activate  # Windows
-source .venv/bin/activate  # Unix
-
-# Install dependencies
+# Install
 pip install -r requirements.txt
-
-# Configure environment
 echo "GROQ_API_KEY=your_key_here" > .env
+
+# Use
+streamlit run app.py              # Web UI
+python tests/test_scrapers_manual.py  # CLI
 ```
 
 ## Usage
 
-### Command-Line Testing
-
-Test individual scrapers:
-
-```bash
-python tests/test_scrapers_manual.py
-```
-
-Interactive menu to select scraper and URL, displays structured output and optional persistence.
-
-### Programmatic API
-
-```python
-from src.agent import SmartAgent
-from src.query import QueryEngine
-from src.storage import StorageManager
-
-# Scrape a URL
-agent = SmartAgent()
-result, record = agent.run("https://api.example.com/docs", "ExampleAPI")
-
-# Load previously scraped data
-storage = StorageManager()
-data = storage.load(record.id)
-
-# Query the data
-engine = QueryEngine()
-answer = engine.answer(data, "How do I authenticate?")
-summary = engine.summarise(data)
-```
-
-### Web Interface
+**Web Interface:**
 
 ```bash
 streamlit run app.py
 ```
 
-Launches Streamlit interface at `http://localhost:8501`. Supports URL input, tool selection preview, and interactive querying.
+**Programmatic:**
 
-## Architecture
+```python
+from src.agent import SmartAgent
+from src.query import QueryEngine
 
-### Core Components
+agent = SmartAgent()
+result, record = agent.run("https://api.example.com/docs", "ExampleAPI")
 
-| Module              | Purpose                                                        |
-| ------------------- | -------------------------------------------------------------- |
-| `src/config.py`     | Environment configuration, constants, directory initialization |
-| `src/models.py`     | Data structures: `ScrapeResult`, `AppRecord`                   |
-| `src/llm_client.py` | Groq API client wrapper                                        |
-| `src/agent.py`      | Orchestration: URL analysis, tool selection, scraping pipeline |
-| `src/storage.py`    | JSON persistence and registry management                       |
-| `src/query.py`      | LLM-powered natural language querying                          |
-
-### Extraction Tools
-
-Located in `src/tools/`:
-
-- **BS4Scraper**: BeautifulSoup-based static HTML extraction
-- **ScrapyScraper**: Breadth-first multi-page crawling within same domain
-- **SeleniumScraper**: Chrome headless rendering for JavaScript-dependent sites
-- **OctoparseScraper**: Wrapper for Octoparse API (requires paid account)
-
-Each tool implements `BaseScraper` abstract interface:
-
-- `can_handle(url, html_hint)` — determines tool applicability
-- `scrape(url, app_name)` — returns `ScrapeResult` (never raises)
-
-### Data Flow
-
-```
-URL Input
-  ↓
-HTML Peek (first 8 KB)
-  ↓
-Tool Selection (LLM-based, currently hardcoded to Selenium)
-  ↓
-Scrape → ScrapeResult
-  ↓
-Storage → Registry + JSON file
-  ↓
-Query Engine (optional)
+engine = QueryEngine()
+answer = engine.answer(result, "How do I authenticate?")
 ```
 
-## Output Structure
+## Features
 
-`ScrapeResult` contains:
+- Multi-strategy extraction (static HTML, JavaScript rendering, multi-page crawling)
+- Structured data: endpoints, authentication, examples, use cases
+- JSON-based persistent storage with registry
+- Natural language querying via LLM
+- Streamlit web interface
 
-- `endpoints`: List of `{method, path, description}`
-- `auth_methods`: List of `{type, description}`
-- `sample_urls`: List of example API URLs
-- `use_cases`: List of use case descriptions
-- `wrapper_hints`: Code snippets and integration examples
-- `raw_sections`: Dictionary of documentation section titles and content
-- `error`: Empty string on success, error message on failure
+## Tool Orchestration
 
-## Configuration
+4 extraction tools, each specialized for different documentation types:
 
-### Environment Variables
+- **BS4Scraper** — Fast BeautifulSoup-based parsing for static HTML docs (~1s, ~20% success rate)
+- **ScrapyScraper** — Multi-page breadth-first crawling for static sites (~5s, ~30% success rate)
+- **SeleniumScraper** — Chrome headless rendering for JavaScript SPAs (~12s, ~85% success rate)
+- **OctoparseScraper** — Paid API wrapper for complex/protected sites (variable speed, ~95% success rate)
 
-```bash
-GROQ_API_KEY=<your_groq_api_key>        # Required for LLM features
-OCTOPARSE_TOKEN=<optional_token>         # Only needed for OctoparseScraper
-```
+Orchestration via `SmartAgent` analyzes URL structure and selects optimal tool automatically.
 
-### Constants (src/config.py)
+## Requirements
 
-- `LLM_MODEL`: Default "llama-3.1-8b-instant"
-- `LLM_MAX_TOKENS`: Default 2048
-- `MAX_SOURCES`: Default 5
-- `CHUNK_SIZE`: Default 800 (for context truncation)
-
-## Current Limitations
-
-1. **Tool selection**: LLM-based selection disabled; currently hardcoded to Selenium for reliability
-2. **Selenium only**: Other scrapers (BS4, Scrapy) require refinement for real-world documentation
-3. **JavaScript rendering**: Slower due to Chrome initialization overhead (~10-15s per page)
-4. **Endpoint detection**: Limited to common patterns; site-specific documentation may be missed
-5. **Auth extraction**: Keyword-based detection; may miss non-standard authentication methods
-
-## Testing
-
-```bash
-# Smoke test (config, models, LLM client)
-python tests/test_day1.py
-
-# Manual scraper testing
-python tests/test_scrapers_manual.py
-
-# Integration tests (day 2)
-python tests/test_day2.py
-```
-
-## Storage
-
-Scraped data is stored in `data/`:
-
-- `data/registry.json` — Index of all scraped apps with metadata
-- `data/{app_id}.json` — Full `ScrapeResult` payload for each app
-
-Example registry entry:
-
-```json
-{
-  "id": "a1b2c3d4_exampleapi",
-  "app_name": "ExampleAPI",
-  "url": "https://api.example.com/docs",
-  "tool_used": "selenium",
-  "file_path": "data/a1b2c3d4_exampleapi.json",
-  "scraped_at": "2026-04-17T14:32:18.123456"
-}
-```
-
-## Dependencies
-
-- `groq` — LLM API client
-- `requests` — HTTP requests
-- `beautifulsoup4` — Static HTML parsing
-- `selenium` — JavaScript rendering
-- `webdriver-manager` — Chrome driver management
-- `streamlit` — Web interface
-- `python-dotenv` — Environment configuration
-
-## Performance Characteristics
-
-| Tool      | Speed    | Success Rate            | Best For                |
-| --------- | -------- | ----------------------- | ----------------------- |
-| BS4       | ~1s      | 20% (static HTML only)  | Simple API docs         |
-| Scrapy    | ~5s      | 30% (static multi-page) | Static doc sites        |
-| Selenium  | ~12s     | 85%                     | JavaScript SPAs         |
-| Octoparse | Variable | 95% (with token)        | Complex/protected sites |
-
-## Future Work
-
-1. Fix BS4 and Scrapy endpoint extraction patterns
-2. Re-enable LLM-based tool selection
-3. Add support for GraphQL APIs
-4. Implement caching to reduce redundant scraping
-5. Add database backend (SQLite/PostgreSQL) for large-scale storage
-6. Develop CLI with argument parsing
-7. Add API server interface (FastAPI/Flask)
+- Python 3.10+
+- Groq API key (for LLM features)
