@@ -67,9 +67,11 @@ class SeleniumScraper(BaseScraper):
     def _fetch_rendered(self, url: str) -> str:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
+        from selenium.webdriver.chrome.service import Service
         from selenium.webdriver.support.ui import WebDriverWait
         from selenium.webdriver.support import expected_conditions as EC
         from selenium.webdriver.common.by import By
+        from webdriver_manager.chrome import ChromeDriverManager
 
         options = Options()
         options.add_argument("--headless")
@@ -78,7 +80,9 @@ class SeleniumScraper(BaseScraper):
         options.add_argument("--disable-gpu")
         options.add_argument("user-agent=Mozilla/5.0 (research-bot/1.0)")
 
-        driver = webdriver.Chrome(options=options)
+        driver = webdriver.Chrome(
+            service=Service(ChromeDriverManager().install()), options=options
+        )
 
         try:
             driver.get(url)

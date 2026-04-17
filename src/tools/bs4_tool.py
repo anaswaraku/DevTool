@@ -131,26 +131,22 @@ class BS4Scraper(BaseScraper):
     ) -> list[dict]:
         endpoints: list[dict] = []
 
-        # ── Strategy 1: Regex over the FULL page text ─────────────────────────
-        # This catches "GET /v1/charges" written as plain text anywhere on the page
-        full_text = soup.get_text(" ", strip=True)
-        for m in _EP_RE.finditer(full_text):
-            method = m.group(1).upper()
-            path = m.group(2).rstrip(".,;:)>]}")
-            if len(path) > 1:
-                endpoints.append({"method": method, "path": path, "description": ""})
-
-        # ── Strategy 2: <code> and <pre> blocks, line-by-line ─────────────────
+        # ── Strategy 1: <code> and <pre> blocks, line-by-line ─────────────────
+        # Extract from code blocks FIRST to avoid duplicates with Strategy 2
         # "curl -X POST https://api.example.com/v1/users" → extract path
+        code_block_endpoints = set()  # track (method, path) pairs from code blocks
         for tag in soup.find_all(["code", "pre"]):
             text = tag.get_text(" ", strip=True)
             for m in _EP_RE.finditer(text):
                 method = m.group(1).upper()
                 path = m.group(2).rstrip(".,;:)>]}")
                 if len(path) > 1:
-                    endpoints.append(
-                        {"method": method, "path": path, "description": ""}
-                    )
+                    key = f"{method}:{path}"
+                    if key not in code_block_endpoints:
+                        code_block_endpoints.add(key)
+                        endpoints.append(
+                            {"method": method, "path": path, "description": ""}
+                        )
 
             # Also catch curl commands: curl -X POST https://host/path
             for line in text.splitlines():
@@ -163,9 +159,29 @@ class BS4Scraper(BaseScraper):
                     method_raw = curl_match.group(1).upper()
                     path = curl_match.group(2).rstrip(".,;:'\")")
                     if method_raw in HTTP_METHODS and len(path) > 1:
-                        endpoints.append(
-                            {"method": method_raw, "path": path, "description": ""}
-                        )
+                        key = f"{method_raw}:{path}"
+                        if key not in code_block_endpoints:
+                            code_block_endpoints.add(key)
+                            endpoints.append(
+                                {"method": method_raw, "path": path, "description": ""}
+                            )
+
+        # ── Strategy 2: Regex over the page text (excluding code blocks) ──────
+        # Get full text but skip code/pre blocks that we already extracted
+        soup_copy = BeautifulSoup(str(soup), "html.parser")
+        for tag in soup_copy(["code", "pre"]):
+            tag.decompose()
+        full_text = soup_copy.get_text(" ", strip=True)
+
+        for m in _EP_RE.finditer(full_text):
+            method = m.group(1).upper()
+            path = m.group(2).rstrip(".,;:)>]}")
+            if len(path) > 1:
+                key = f"{method}:{path}"
+                if key not in code_block_endpoints:
+                    endpoints.append(
+                        {"method": method, "path": path, "description": ""}
+                    )
 
         # ── Strategy 3: Table rows (method col + path col) ────────────────────
         for table in soup.find_all("table"):
@@ -211,21 +227,92 @@ class BS4Scraper(BaseScraper):
         self, endpoints: list[dict], soup: BeautifulSoup
     ) -> list[dict]:
         """
-        For each endpoint, try to find a nearby <p> or <td> that describes it.
+        For each endpoint, try to find a descriptive nearby element.
+        Searches in order: method+path in table cells, nearby headers, semantic elements.
         Best-effort: leaves description empty if nothing found.
         """
-        page_text = soup.get_text(" ")
         for ep in endpoints:
+            method = ep["method"]
             path = ep["path"]
-            # Find the path in page text and grab surrounding sentence
-            idx = page_text.find(path)
-            if idx != -1:
-                snippet = page_text[max(0, idx - 20) : idx + len(path) + 120]
-                # Remove the path itself and clean up
-                desc = snippet.replace(path, "").strip()
-                desc = re.sub(r"\s+", " ", desc)
+            desc = self._find_endpoint_description(soup, method, path)
+            if desc:
                 ep["description"] = desc[:100]
         return endpoints
+
+    def _find_endpoint_description(
+        self, soup: BeautifulSoup, method: str, path: str
+    ) -> str:
+        """
+        Search for a description of an endpoint by looking in structured elements.
+        """
+        # Strategy 1: Check table cells with method+path pattern
+        for table in soup.find_all("table"):
+            for row in table.find_all("tr"):
+                cells = row.find_all(["td", "th"])
+                row_text = " ".join(cell.get_text(strip=True) for cell in cells)
+                if method in row_text and path in row_text:
+                    # Look for adjacent cells that might be description
+                    for i, cell in enumerate(cells):
+                        cell_text = cell.get_text(strip=True)
+                        if path in cell_text or method in cell_text:
+                            # Check next cell or nearby cells for description
+                            for j in range(i + 1, min(i + 3, len(cells))):
+                                desc = cells[j].get_text(strip=True)
+                                if (
+                                    desc
+                                    and len(desc) > 10
+                                    and not desc.startswith(method)
+                                ):
+                                    return desc
+
+        # Strategy 2: Look for method+path in <code>, <pre>, or <li>
+        # and find a nearby paragraph or heading
+        for tag in soup.find_all(["code", "pre", "li", "span"]):
+            text = tag.get_text(strip=True)
+            if method in text and path in text:
+                # Search parent chain for description text
+                parent = tag.parent
+                for _ in range(3):  # up to 3 levels up
+                    if parent is None:
+                        break
+                    # Look for sibling paragraphs or previous elements
+                    for sibling in parent.find_all(["p", "div"], recursive=False):
+                        sibling_text = sibling.get_text(strip=True)
+                        if sibling_text and len(sibling_text) > 15:
+                            if not any(m in sibling_text.upper() for m in HTTP_METHODS):
+                                return sibling_text
+                    parent = parent.parent
+
+        # Strategy 3: Search for preceding header + path pattern
+        for tag in soup.find_all(True):
+            text = tag.get_text(strip=True)
+            if path in text and len(text) < 200:
+                # Find nearest preceding header
+                current = tag
+                for _ in range(5):  # search up to 5 levels
+                    prev_sibling = current.find_previous_sibling(
+                        ["h1", "h2", "h3", "h4"]
+                    )
+                    if prev_sibling:
+                        header_text = prev_sibling.get_text(strip=True)
+                        if header_text and len(header_text) > 5:
+                            return header_text
+                    current = current.parent
+                    if current is None:
+                        break
+
+        # Strategy 4: Last resort - grab surrounding text from full document
+        page_text = soup.get_text(" ", strip=True)
+        # Find path and get context before and after (avoid duplicates with another method)
+        idx = page_text.find(path)
+        if idx != -1 and idx > 50:
+            # Get text before the path (better for descriptions)
+            before = page_text[max(0, idx - 80) : idx]
+            desc = before.split()[-5:] if before.split() else []
+            if desc:
+                return " ".join(desc)
+
+        return ""
 
     def _dedupe_endpoints(self, endpoints: list[dict]) -> list[dict]:
         seen: set[str] = set()

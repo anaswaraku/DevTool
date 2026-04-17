@@ -70,8 +70,8 @@ class SmartAgent:
             if not bs4_result.error:
                 result = bs4_result
 
-        # ── Fallback 2: 0 endpoints on a docs URL → Scrapy multi-page crawl ─
-        if not result.endpoints and not result.error:
+        # ── Fallback 2: few endpoints on a docs URL → Scrapy multi-page crawl ─
+        if len(result.endpoints) < 5 and not result.error:
             if ScrapyScraper().can_handle(url) and tool.name != "scrapy":
                 scrapy_result = ScrapyScraper().scrape(url, app_name)
                 if scrapy_result.endpoints:  # only adopt if we actually got more

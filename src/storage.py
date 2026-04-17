@@ -44,7 +44,7 @@ class StorageManager:
             url=result.url,
             tool_used=result.tool_used,
             file_path=file_path,
-            endpoint_count=len(result.endpoints)
+            endpoint_count=len(result.endpoints),
         )
         self._upsert_registry(record)
         return record
@@ -52,19 +52,55 @@ class StorageManager:
     def load(self, app_id: str) -> dict:
         """
         Load and return the raw data dict for a given app_id.
+        First tries registry, then falls back to direct file lookup.
         Raises FileNotFoundError if not found.
         """
+        # Try loading from registry first
         for record in self._load_registry():
             if record["id"] == app_id:
                 path = record["file_path"]
                 if os.path.exists(path):
                     with open(path, "r", encoding="utf-8") as f:
                         return json.load(f)
+
+        # Fallback: construct path directly if registry is missing/corrupted
+        fallback_path = os.path.join(DATA_DIR, f"{app_id}.json")
+        if os.path.exists(fallback_path):
+            with open(fallback_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+
         raise FileNotFoundError(f"No data found for app_id='{app_id}'")
 
     def list_apps(self) -> list[dict]:
-        """Return all AppRecord dicts from the registry (newest first)."""
+        """
+        Return all AppRecord dicts from the registry (newest first).
+        Falls back to scanning data directory if registry is missing/corrupted.
+        """
         records = self._load_registry()
+
+        # Fallback: if registry is empty, scan directory
+        if not records and os.path.exists(DATA_DIR):
+            for filename in os.listdir(DATA_DIR):
+                if filename == "registry.json" or not filename.endswith(".json"):
+                    continue
+                file_path = os.path.join(DATA_DIR, filename)
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    app_id = filename.replace(".json", "")
+                    records.append(
+                        {
+                            "id": app_id,
+                            "app_name": data.get("app_name", "unknown"),
+                            "url": data.get("url", ""),
+                            "tool_used": data.get("tool_used", ""),
+                            "file_path": file_path,
+                            "endpoint_count": len(data.get("endpoints", [])),
+                        }
+                    )
+                except (json.JSONDecodeError, IOError):
+                    pass
+
         return list(reversed(records))
 
     def delete(self, app_id: str) -> bool:
@@ -91,11 +127,66 @@ class StorageManager:
         return deleted
 
     def get_record(self, app_id: str) -> dict | None:
-        """Return a single AppRecord dict or None."""
+        """
+        Return a single AppRecord dict or None.
+        Falls back to reconstructing record from data file if registry is missing.
+        """
         for rec in self._load_registry():
             if rec["id"] == app_id:
                 return rec
+
+        # Fallback: reconstruct record from data file if registry is unavailable
+        fallback_path = os.path.join(DATA_DIR, f"{app_id}.json")
+        if os.path.exists(fallback_path):
+            try:
+                with open(fallback_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                # Reconstruct AppRecord from the data
+                return {
+                    "id": app_id,
+                    "app_name": data.get("app_name", "unknown"),
+                    "url": data.get("url", ""),
+                    "tool_used": data.get("tool_used", ""),
+                    "file_path": fallback_path,
+                    "endpoint_count": len(data.get("endpoints", [])),
+                }
+            except (json.JSONDecodeError, IOError):
+                pass
         return None
+
+    def rebuild_registry(self) -> int:
+        """
+        Scan data directory and rebuild registry from existing .json files.
+        Useful for recovery if registry.json is corrupted.
+        Returns the number of records rebuilt.
+        """
+        records = []
+        if not os.path.exists(DATA_DIR):
+            return 0
+
+        for filename in os.listdir(DATA_DIR):
+            if filename == "registry.json" or not filename.endswith(".json"):
+                continue
+
+            file_path = os.path.join(DATA_DIR, filename)
+            try:
+                with open(file_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                app_id = filename.replace(".json", "")
+                record = {
+                    "id": app_id,
+                    "app_name": data.get("app_name", "unknown"),
+                    "url": data.get("url", ""),
+                    "tool_used": data.get("tool_used", ""),
+                    "file_path": file_path,
+                    "endpoint_count": len(data.get("endpoints", [])),
+                }
+                records.append(record)
+            except (json.JSONDecodeError, IOError):
+                pass
+
+        self._save_registry(records)
+        return len(records)
 
     # ── Private helpers ───────────────────────────────────────────────
 
@@ -123,5 +214,6 @@ class StorageManager:
         registry = self._load_registry()
         registry = [r for r in registry if r["id"] != record.id]
         from dataclasses import asdict
+
         registry.append(asdict(record))
         self._save_registry(registry)
