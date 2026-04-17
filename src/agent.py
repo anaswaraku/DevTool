@@ -146,36 +146,32 @@ class SmartAgent:
     def _ask_llm_for_tool(self, url: str, html_hint: str) -> str | None:
         """
         Returns one of the TOOL_NAMES strings, or None if unclear.
-        TEMPORARILY: Always return 'selenium' for reliable scraping.
+        Uses LLM to intelligently select the best tool for the given site.
         """
-        # TODO: Re-enable LLM-based selection once other tools are fixed
-        return "selenium"
-
-        # # ORIGINAL LLM-based selection (disabled temporarily)
-        # snippet = html_hint[:3000] if html_hint else "(no HTML available)"
-        # prompt = (
-        #     f"You are a web-scraping expert. Pick the best tool for this site.\n\n"
-        #     f"URL: {url}\n\n"
-        #     f"HTML snippet (first 3000 chars):\n{snippet}\n\n"
-        #     f"Choose exactly one tool from this list: {TOOL_NAMES}.\n"
-        #     f"Rules:\n"
-        #     f"  - Use 'selenium' ONLY if HTML has JS framework signals (__NEXT_DATA__, react-root, ng-app, __NUXT__, vue-app) "
-        #     f"AND there is very little readable text in the HTML.\n"
-        #     f"  - Use 'scrapy' if the URL is a multi-page doc site (/docs/, /reference/, developer.).\n"
-        #     f"  - Use 'octoparse' if the URL involves login/dashboard/portal/console.\n"
-        #     f"  - Use 'beautifulsoup' for plain static HTML or when the page has readable content even with JS.\n\n"
-        #     f'Respond with ONLY valid JSON: {{"tool": "<name>"}}'
-        # )
-        # try:
-        #     raw = self.llm.ask_json(prompt)
-        #     raw = re.sub(r"```[a-z]*\n?", "", raw).strip().strip("`")
-        #     data = json.loads(raw)
-        #     candidate = data.get("tool", "").strip().lower()
-        #     if candidate in TOOL_NAMES:
-        #         return candidate
-        # except Exception:
-        #     pass
-        # return None
+        snippet = html_hint[:3000] if html_hint else "(no HTML available)"
+        prompt = (
+            f"You are a web-scraping expert. Pick the best tool for this site.\n\n"
+            f"URL: {url}\n\n"
+            f"HTML snippet (first 3000 chars):\n{snippet}\n\n"
+            f"Choose exactly one tool from this list: {TOOL_NAMES}.\n"
+            f"Rules:\n"
+            f"  - Use 'selenium' ONLY if HTML has JS framework signals (__NEXT_DATA__, react-root, ng-app, __NUXT__, vue-app) "
+            f"AND there is very little readable text in the HTML.\n"
+            f"  - Use 'scrapy' if the URL is a multi-page doc site (/docs/, /reference/, developer.).\n"
+            f"  - Use 'octoparse' if the URL involves login/dashboard/portal/console.\n"
+            f"  - Use 'beautifulsoup' for plain static HTML or when the page has readable content even with JS.\n\n"
+            f'Respond with ONLY valid JSON: {{"tool": "<name>"}}'
+        )
+        try:
+            raw = self.llm.ask_json(prompt)
+            raw = re.sub(r"```[a-z]*\n?", "", raw).strip().strip("`")
+            data = json.loads(raw)
+            candidate = data.get("tool", "").strip().lower()
+            if candidate in TOOL_NAMES:
+                return candidate
+        except Exception:
+            pass
+        return None
 
     # ── LLM-powered extraction fallbacks ─────────────────────────────
 

@@ -108,8 +108,19 @@ class BS4Scraper(BaseScraper):
 
     def _clean(self, soup: BeautifulSoup) -> BeautifulSoup:
         """Remove chrome (nav, footer, ads) but keep all content tags."""
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside",
-                         "noscript", "iframe", "svg"]):
+        for tag in soup(
+            [
+                "script",
+                "style",
+                "nav",
+                "footer",
+                "header",
+                "aside",
+                "noscript",
+                "iframe",
+                "svg",
+            ]
+        ):
             tag.decompose()
         return soup
 
@@ -137,19 +148,24 @@ class BS4Scraper(BaseScraper):
                 method = m.group(1).upper()
                 path = m.group(2).rstrip(".,;:)>]}")
                 if len(path) > 1:
-                    endpoints.append({"method": method, "path": path, "description": ""})
+                    endpoints.append(
+                        {"method": method, "path": path, "description": ""}
+                    )
 
             # Also catch curl commands: curl -X POST https://host/path
             for line in text.splitlines():
                 curl_match = re.search(
                     r"curl\s+(?:-X\s+)?(\w+)\s+https?://[^\s/]+(/[^\s\"']*)",
-                    line, re.IGNORECASE,
+                    line,
+                    re.IGNORECASE,
                 )
                 if curl_match:
                     method_raw = curl_match.group(1).upper()
                     path = curl_match.group(2).rstrip(".,;:'\")")
                     if method_raw in HTTP_METHODS and len(path) > 1:
-                        endpoints.append({"method": method_raw, "path": path, "description": ""})
+                        endpoints.append(
+                            {"method": method_raw, "path": path, "description": ""}
+                        )
 
         # ── Strategy 3: Table rows (method col + path col) ────────────────────
         for table in soup.find_all("table"):
@@ -163,7 +179,9 @@ class BS4Scraper(BaseScraper):
                     elif cell.startswith("/") and " " not in cell.strip():
                         path = cell.strip()
                 if method and path:
-                    endpoints.append({"method": method, "path": path, "description": ""})
+                    endpoints.append(
+                        {"method": method, "path": path, "description": ""}
+                    )
 
         # ── Strategy 4: Adjacent sibling elements ─────────────────────────────
         # e.g. <span class="method">GET</span><span class="path">/users</span>
@@ -174,11 +192,13 @@ class BS4Scraper(BaseScraper):
                 if sibling:
                     sib_text = sibling.get_text(strip=True)
                     if sib_text.startswith("/") and len(sib_text) > 1:
-                        endpoints.append({
-                            "method": text,
-                            "path": sib_text.split()[0].rstrip(".,;:)"),
-                            "description": "",
-                        })
+                        endpoints.append(
+                            {
+                                "method": text,
+                                "path": sib_text.split()[0].rstrip(".,;:)"),
+                                "description": "",
+                            }
+                        )
 
         deduped = self._dedupe_endpoints(endpoints)
 
@@ -200,7 +220,7 @@ class BS4Scraper(BaseScraper):
             # Find the path in page text and grab surrounding sentence
             idx = page_text.find(path)
             if idx != -1:
-                snippet = page_text[max(0, idx - 20): idx + len(path) + 120]
+                snippet = page_text[max(0, idx - 20) : idx + len(path) + 120]
                 # Remove the path itself and clean up
                 desc = snippet.replace(path, "").strip()
                 desc = re.sub(r"\s+", " ", desc)
@@ -221,20 +241,20 @@ class BS4Scraper(BaseScraper):
 
     def _extract_auth(self, soup: BeautifulSoup) -> list[dict]:
         keyword_map = {
-            "api key":              "API Key",
-            "api_key":              "API Key",
-            "x-api-key":            "API Key",
-            "bearer":               "Bearer Token",
-            "oauth 2":              "OAuth 2.0",
-            "oauth2":               "OAuth 2.0",
-            "basic auth":           "Basic Auth",
+            "api key": "API Key",
+            "api_key": "API Key",
+            "x-api-key": "API Key",
+            "bearer": "Bearer Token",
+            "oauth 2": "OAuth 2.0",
+            "oauth2": "OAuth 2.0",
+            "basic auth": "Basic Auth",
             "authorization: basic": "Basic Auth",
-            "jwt":                  "JWT",
-            "json web token":       "JWT",
+            "jwt": "JWT",
+            "json web token": "JWT",
             "authorization header": "Authorization Header",
-            "token-based":          "Token Auth",
-            "api token":            "API Token",
-            "hmac":                 "HMAC Signature",
+            "token-based": "Token Auth",
+            "api token": "API Token",
+            "hmac": "HMAC Signature",
         }
         found: dict[str, dict] = {}
         text = soup.get_text().lower()
@@ -242,7 +262,7 @@ class BS4Scraper(BaseScraper):
             if keyword in text and label not in found:
                 # Find the sentence containing this keyword for context
                 idx = text.find(keyword)
-                snippet = text[max(0, idx - 30): idx + 120]
+                snippet = text[max(0, idx - 30) : idx + 120]
                 snippet = re.sub(r"\s+", " ", snippet).strip()
                 found[label] = {
                     "type": label,
@@ -280,9 +300,21 @@ class BS4Scraper(BaseScraper):
 
     def _extract_use_cases(self, soup: BeautifulSoup) -> list[str]:
         triggers = [
-            "you can", "allows you", "use case", "example", "enables",
-            "integrate", "retrieve", "create", "update", "delete", "manage",
-            "lets you", "used to", "this endpoint", "this api",
+            "you can",
+            "allows you",
+            "use case",
+            "example",
+            "enables",
+            "integrate",
+            "retrieve",
+            "create",
+            "update",
+            "delete",
+            "manage",
+            "lets you",
+            "used to",
+            "this endpoint",
+            "this api",
         ]
         cases: list[str] = []
         for p in soup.find_all(["p", "li"]):
