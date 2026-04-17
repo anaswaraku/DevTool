@@ -35,13 +35,18 @@ class ScrapyScraper(BaseScraper):
             all_snippets = []
 
             for html in pages:
+                raw_soup = BeautifulSoup(html, "html.parser")
                 soup = parser._clean(BeautifulSoup(html, "html.parser"))
                 all_sections.update(parser._extract_sections(soup))
-                all_endpoints.extend(parser._extract_endpoints(soup))
+                all_endpoints.extend(parser._extract_endpoints(soup, raw_soup))
                 all_auth.extend(parser._extract_auth(soup))
                 all_samples.extend(parser._extract_sample_urls(soup))
                 all_use_cases.extend(parser._extract_use_cases(soup))
                 all_snippets.extend(parser._extract_snippets(soup))
+                # Full-text per page as LLM fallback
+                ft = parser._full_text(soup)
+                if ft:
+                    all_sections[f"__full_text_page_{len(all_sections)}__"] = ft
 
             return ScrapeResult(
                 url=url,

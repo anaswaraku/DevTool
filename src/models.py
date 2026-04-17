@@ -23,4 +23,5 @@ class AppRecord:
     url: str
     tool_used: str
     file_path: str
+    endpoint_count: int = 0
     scraped_at: str = field(default_factory=lambda: datetime.now().isoformat())

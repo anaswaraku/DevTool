@@ -1,7 +1,11 @@
 duckduckgo-search
 beautifulsoup4
+lxml
 chromadb
 streamlit
 python-dotenv
 requests
 newspaper3k
+groq
+selenium
+webdriver-manager
