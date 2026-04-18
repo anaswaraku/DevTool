@@ -22,18 +22,6 @@ python tests/test_scrapers_manual.py  # CLI
 streamlit run app.py
 ```
 
-**Programmatic:**
-
-```python
-from src.agent import SmartAgent
-from src.query import QueryEngine
-
-agent = SmartAgent()
-result, record = agent.run("https://api.example.com/docs", "ExampleAPI")
-
-engine = QueryEngine()
-answer = engine.answer(result, "How do I authenticate?")
-```
 
 ## Features
 
